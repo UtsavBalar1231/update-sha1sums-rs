@@ -1,6 +1,6 @@
 use sha1::{Digest, Sha1};
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Write, BufWriter};
 use std::path::PathBuf;
 
 pub struct UpdateSha1sums {
@@ -112,7 +112,7 @@ fn update_sha1sums(lines: &mut Vec<String>, vendor_path: &str) {
 }
 
 fn write_file(lines: &Vec<String>) {
-    let mut file = File::create("proprietary-files.txt").expect("Failed to create file");
+    let mut file = BufWriter::new(File::create("proprietary-files.txt").unwrap());
     for line in lines {
         file.write_all(line.as_bytes())
             .expect("Failed to write to file");

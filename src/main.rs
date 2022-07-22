@@ -1,14 +1,11 @@
 use clap::{crate_description, crate_name, crate_version, App, Arg};
-use std::cell::RefCell;
-use std::fs;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use update_sha1sums_rs::UpdateSha1sums;
 
 static DEVICE: &str = "alioth";
 static VENDOR: &str = "xiaomi";
 static FILENAME: &str = "proprietary-files.txt";
-thread_local! {
-    static NEED_SHA1: RefCell<bool> = RefCell::new(false);
-}
 
 fn main() {
     let matches = App::new(crate_name!())
@@ -26,7 +23,11 @@ fn main() {
         "{}{}{}{}{}",
         "../../../vendor/", VENDOR, "/", DEVICE, "/proprietary/"
     );
-    let contents = fs::read_to_string(FILENAME).expect("Something went wrong reading the file");
+    let contents: String = BufReader::new(File::open(FILENAME).unwrap())
+        .lines()
+        .map(|line| line.unwrap())
+        .collect::<Vec<String>>()
+        .join("\n");
     let cleanup = matches.is_present("cleanup");
 
     UpdateSha1sums::builder()
