@@ -1,6 +1,6 @@
 use sha1::{Digest, Sha1};
 use std::fs::File;
-use std::io::{self, Write, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 
 pub struct UpdateSha1sums {
@@ -65,6 +65,9 @@ fn cleanup_sha1sums(lines: &mut Vec<String>) {
 
 fn update_sha1sums(lines: &mut Vec<String>, vendor_path: &str) {
     let mut needsha1 = false;
+
+    // TODO: This is a hack to get the path to the vendor directory.
+    // TODO: Remove Clone usage when it's possible to use &str instead of String.
     for (index, line) in lines.clone().iter().enumerate() {
         // Skip empty lines
         if line.len() == 0 {
@@ -82,25 +85,32 @@ fn update_sha1sums(lines: &mut Vec<String>, vendor_path: &str) {
             // Remove existing SHA1 hash
             lines[index] = line.split("|").nth(0).unwrap().to_string();
 
-            let filepath = lines[index].split(";").nth(0).unwrap();
-            let mut filename = filepath.split(":").last().unwrap();
+            let mut filepath = lines[index]
+                .split(";")
+                .nth(0)
+                .unwrap()
+                .split(":")
+                .last()
+                .unwrap();
 
             // Remove - from start of the line
-            if filename.starts_with("-") {
-                filename = filename.split("-").nth(1).unwrap();
+            if filepath.starts_with("-") {
+                filepath = &filepath[1..];
             }
 
             // TODO: Find an optimized implementation to do this
 
             // Open the file and get the SHA1 hash
-            let blob_path = PathBuf::from(vendor_path).join(filename);
-            let mut file: File = std::fs::File::open(blob_path.clone()).expect("Failed to read file");
+            let mut file: File = std::fs::File::open(PathBuf::from(vendor_path).join(filepath)).expect("Failed to read file");
 
             let mut hasher = Sha1::new();
             io::copy(&mut file, &mut hasher).expect("Failed to read file");
 
-            let sha1_hash = hasher.finalize();
-            let sha1_hash = format!("{:x}", sha1_hash);
+            let sha1_hash: String = hasher
+                .finalize()
+                .into_iter()
+                .map(|x| format!("{:02x}", x))
+                .collect();
 
             // Add SHA1 hash to the file
             lines[index] = format!("{}|{}", lines[index], sha1_hash);
@@ -111,7 +121,7 @@ fn update_sha1sums(lines: &mut Vec<String>, vendor_path: &str) {
     write_file(lines);
 }
 
-fn write_file(lines: &Vec<String>) {
+fn write_file(lines: &[String]) {
     let mut file = BufWriter::new(File::create("proprietary-files.txt").unwrap());
     for line in lines {
         file.write_all(line.as_bytes())
