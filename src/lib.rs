@@ -1,4 +1,4 @@
-use sha1::{Digest, Sha1};
+//use sha1::{Digest, Sha1};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13,11 +13,10 @@ impl UpdateSha1sums {
     }
 
     /// Searches for blobs in the given paths, and displays missing dependencies.
-    pub fn run(&self, content: String, paths: &[String], vendor_path: String) {
+    pub fn run(&self, content: &str, paths: &[&str], vendor_path: &str) {
         let mut lines = content
             .lines()
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>();
+            .collect::<Vec<&str>>();
 
         match self.cleanup {
             true => {
@@ -74,12 +73,17 @@ impl UpdateSha1sumsBuilder {
     }
 }
 
-fn find_files(paths: &[String]) -> Vec<PathBuf> {
+fn find_files(paths: &[&str]) -> Vec<PathBuf> {
     let dirs = paths
         .iter()
         .map(Path::new)
         .filter(|path| path.is_dir())
         .collect::<Vec<_>>();
+
+    print!("Searching for files in {} directories: ", dirs.len());
+    for dir in dirs.iter() {
+        println!("{}", dir.display().to_string());
+    }
 
     let file_paths: Vec<PathBuf> = dirs
         .iter()
@@ -92,18 +96,23 @@ fn find_files(paths: &[String]) -> Vec<PathBuf> {
     file_paths
 }
 
-fn cleanup_sha1sums(lines: &mut Vec<String>) {
+fn cleanup_sha1sums(lines: &mut Vec<&str>) {
     println!("Cleaning up");
     for (index, line) in lines.clone().iter().enumerate() {
         if line.len() == 0 || line.starts_with("#") || !line.contains("|") {
             continue;
         }
-        lines[index] = format!("{}{}", line.split("|").next().unwrap(), "");
+
+        // Remove the SHA1 hash.
+        lines[index] = line.split("|").nth(0).unwrap();
+
+        
+        //lines[index] = format!("{}{}", line.split("|").next().unwrap(), "").as_str();
         println!("{}", lines[index]);
     }
 }
 
-fn update_sha1sums(lines: &mut Vec<String>, blob_paths: Vec<&PathBuf>, vendor_path: String) {
+fn update_sha1sums(lines: &mut Vec<&str>, blob_paths: Vec<&PathBuf>, vendor_path: &str) {
     for (index, line) in lines.clone().iter().enumerate() {
         // Skip empty lines
         if line.len() == 0 {
@@ -119,10 +128,13 @@ fn update_sha1sums(lines: &mut Vec<String>, blob_paths: Vec<&PathBuf>, vendor_pa
 
         if cleanup == true {
             // Remove existing SHA1 hash
-            lines[index] = format!("{}{}", line.split("|").next().unwrap(), "");
+            lines[index] = line.split("|").nth(0).unwrap();
+            //lines[index] = format!("{}{}", line.split("|").next().unwrap(), "").as_str();
 
+            // Remove - from start of the line
             if line.starts_with("-") {
-                lines[index] = lines[index].replace("-", "");
+                lines[index] = line.split("-").nth(1).unwrap();
+                //lines[index] = lines[index].replace("-", "").as_str();
             }
         }
     }

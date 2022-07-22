@@ -27,11 +27,11 @@ fn main() {
         "../../../vendor/", VENDOR, "/", DEVICE, "/proprietary"
     );
     let contents = fs::read_to_string(FILENAME).expect("Something went wrong reading the file");
-    let paths = contents.lines().map(|line| line.to_string()).collect::<Vec<String>>();
+    let paths = contents.lines().collect::<Vec<&str>>();
     let cleanup = matches.is_present("cleanup");
 
     UpdateSha1sums::builder()
         .cleanup(cleanup)
         .build()
-        .run(contents, &paths, vendor_path);
+        .run(contents.as_str(), &paths, vendor_path.as_str());
 }
