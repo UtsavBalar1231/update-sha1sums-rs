@@ -1,0 +1,13 @@
+[package]
+name = "update-sha1sums-rs"
+version = "0.1.0"
+edition = "2021"
+author = "Utsav Balar <utsavbalar1231@gmail.com>"
+description = "Update SHA1SUMs script written in Rust"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33"
+sha-1 = "0.7.0"
