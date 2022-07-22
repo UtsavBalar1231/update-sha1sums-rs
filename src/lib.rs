@@ -1,54 +1,31 @@
-//use sha1::{Digest, Sha1};
-use std::fs;
-use std::path::{Path, PathBuf};
+use sha1::{Digest, Sha1};
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::PathBuf;
 
 pub struct UpdateSha1sums {
     pub cleanup: bool,
 }
 
 impl UpdateSha1sums {
-    /// Creates a new MissingBlobs builder.
     pub fn builder() -> UpdateSha1sumsBuilder {
         UpdateSha1sumsBuilder::default()
     }
 
-    /// Searches for blobs in the given paths, and displays missing dependencies.
-    pub fn run(&self, content: &str, paths: &[&str], vendor_path: &str) {
-        let mut lines = content
-            .lines()
-            .collect::<Vec<&str>>();
+    pub fn run(&self, content: String, vendor_path: &str) {
+        let mut lines: Vec<String> = content.lines().map(|x| x.to_string()).collect();
 
         match self.cleanup {
             true => {
-                println!("Cleaning up SHA1 sums");
                 cleanup_sha1sums(&mut lines);
             }
             false => {
-                println!("Updating SHA1 sums");
-                let file_paths: Vec<PathBuf> = find_files(&paths);
-                let blob_paths: Vec<&PathBuf> = file_paths
-                    .iter()
-                    .filter(|path| match path.extension() {
-                        // Assume that valid blobs have ".so" extension.
-                        Some(ext) => ext == "so",
-                        None => false,
-                    })
-                    .collect();
-                println!("Found {} blobs", blob_paths.len());
-                for file in file_paths.iter() {
-                    println!("{}", file.display().to_string());
-                }
-                for blob_path in &blob_paths {
-                    println!("{}", blob_path.display().to_string());
-                }
-
-                update_sha1sums(&mut lines, blob_paths, vendor_path);
+                update_sha1sums(&mut lines, vendor_path);
             }
         }
     }
 }
 
-/// The MissingBlobs builder.
 pub struct UpdateSha1sumsBuilder {
     cleanup: bool,
 }
@@ -60,7 +37,6 @@ impl Default for UpdateSha1sumsBuilder {
 }
 
 impl UpdateSha1sumsBuilder {
-    /// Builds a UpdateSha1sums.
     pub fn build(&self) -> UpdateSha1sums {
         UpdateSha1sums {
             cleanup: self.cleanup,
@@ -73,46 +49,22 @@ impl UpdateSha1sumsBuilder {
     }
 }
 
-fn find_files(paths: &[&str]) -> Vec<PathBuf> {
-    let dirs = paths
-        .iter()
-        .map(Path::new)
-        .filter(|path| path.is_dir())
-        .collect::<Vec<_>>();
-
-    print!("Searching for files in {} directories: ", dirs.len());
-    for dir in dirs.iter() {
-        println!("{}", dir.display().to_string());
-    }
-
-    let file_paths: Vec<PathBuf> = dirs
-        .iter()
-        .map(|dir| fs::read_dir(dir).expect("Could not read directory."))
-        .flat_map(|read_dir| {
-            read_dir.map(|dir_entry| dir_entry.expect("Could not read directory entry.").path())
-        })
-        .collect();
-
-    file_paths
-}
-
-fn cleanup_sha1sums(lines: &mut Vec<&str>) {
-    println!("Cleaning up");
+fn cleanup_sha1sums(lines: &mut Vec<String>) {
     for (index, line) in lines.clone().iter().enumerate() {
+        // Skip empty lines, comments and lines with no SHA1 hash
         if line.len() == 0 || line.starts_with("#") || !line.contains("|") {
             continue;
         }
 
-        // Remove the SHA1 hash.
-        lines[index] = line.split("|").nth(0).unwrap();
-
-        
-        //lines[index] = format!("{}{}", line.split("|").next().unwrap(), "").as_str();
-        println!("{}", lines[index]);
+        lines[index] = line.split("|").nth(0).unwrap().to_string();
     }
+
+    // Write the new file
+    write_file(lines);
 }
 
-fn update_sha1sums(lines: &mut Vec<&str>, blob_paths: Vec<&PathBuf>, vendor_path: &str) {
+fn update_sha1sums(lines: &mut Vec<String>, vendor_path: &str) {
+    let mut needsha1 = false;
     for (index, line) in lines.clone().iter().enumerate() {
         // Skip empty lines
         if line.len() == 0 {
@@ -120,22 +72,50 @@ fn update_sha1sums(lines: &mut Vec<&str>, blob_paths: Vec<&PathBuf>, vendor_path
         }
 
         // Check if we need to set SHA1 hash for the next files
-        let mut cleanup = false;
+        #[allow(unused_assignments)]
         if line.starts_with("#") {
-            cleanup = line.contains(" - ");
+            needsha1 = line.contains(" - ");
             continue;
         }
 
-        if cleanup == true {
+        if needsha1 {
             // Remove existing SHA1 hash
-            lines[index] = line.split("|").nth(0).unwrap();
-            //lines[index] = format!("{}{}", line.split("|").next().unwrap(), "").as_str();
+            lines[index] = line.split("|").nth(0).unwrap().to_string();
+
+            let filepath = lines[index].split(";").nth(0).unwrap();
+            let mut filename = filepath.split(":").last().unwrap();
 
             // Remove - from start of the line
-            if line.starts_with("-") {
-                lines[index] = line.split("-").nth(1).unwrap();
-                //lines[index] = lines[index].replace("-", "").as_str();
+            if filename.starts_with("-") {
+                filename = filename.split("-").nth(1).unwrap();
             }
+
+            // TODO: Find an optimized implementation to do this
+
+            // Open the file and get the SHA1 hash
+            let blob_path = PathBuf::from(vendor_path).join(filename);
+            let mut file: File = std::fs::File::open(blob_path.clone()).expect("Failed to read file");
+
+            let mut hasher = Sha1::new();
+            io::copy(&mut file, &mut hasher).expect("Failed to read file");
+
+            let sha1_hash = hasher.finalize();
+            let sha1_hash = format!("{:x}", sha1_hash);
+
+            // Add SHA1 hash to the file
+            lines[index] = format!("{}|{}", lines[index], sha1_hash);
         }
+    }
+
+    // Write the new file
+    write_file(lines);
+}
+
+fn write_file(lines: &Vec<String>) {
+    let mut file = File::create("proprietary-files.txt").expect("Failed to create file");
+    for line in lines {
+        file.write_all(line.as_bytes())
+            .expect("Failed to write to file");
+        file.write_all(b"\n").expect("Failed to write to file");
     }
 }

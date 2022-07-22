@@ -10,4 +10,4 @@ license = "MIT"
 
 [dependencies]
 clap = "2.33"
-sha-1 = "0.7.0"
+sha-1 = "0.10.0"
